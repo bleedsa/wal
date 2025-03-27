@@ -1,11 +1,10 @@
 use crate::{
     Res,
     bc::{Instr, InstrType, Obj, Reg::*, Regs},
-    mkindexed,
+    err_fmt, mkindexed, dbgln,
 };
 use std::{
     collections::HashMap,
-    mem::transmute,
     ops::{Index, IndexMut},
 };
 
@@ -68,15 +67,53 @@ impl<T> IndexMut<&u64> for Map<T> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Vars(Option<Vec<Option<Obj>>>);
+pub struct Vars(Vec<Option<Obj>>);
 
 impl Vars {
     pub fn new(sz: usize) -> Self {
-        Self(if sz == 0 {
-            None
+        Self((0..sz).map(|_| None).collect())
+    }
+}
+
+impl Index<usize> for Vars {
+    type Output = Option<Obj>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for Vars {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Stk(Option<Vec<Obj>>);
+
+impl Stk {
+    pub const fn new() -> Self {
+        Self(None)
+    }
+
+    pub fn push(&mut self, x: Obj) {
+        if let None = self.0 {
+            self.0 = Some(Vec::new());
+        }
+
+        if let Some(v) = &mut self.0 {
+            v.push(x);
+        }
+    }
+
+    #[inline]
+    pub fn pop(&mut self) -> Option<Obj> {
+        if let Some(v) = &mut self.0 {
+            v.pop()
         } else {
-            (0..sz).map(|_| None).collect()
-        })
+            None
+        }
     }
 }
 
@@ -99,7 +136,7 @@ impl<'a> Iterator for BodyIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.iter
             .next()
-            .and_then(|x| if let Instr::Ret(_) = x { None } else { Some(x) })
+            .and_then(|x| if &Instr::Ret == x { None } else { Some(x) })
     }
 }
 
@@ -127,30 +164,49 @@ impl<'a> VM<'a> {
         BodyIter::new(self.bodies[i], self.instrs)
     }
 
-    pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, x: &'a Instr) -> Res<()> {
+    pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &'a Instr) -> Res<()> {
+        dbgln!(" > exec {x:?}\n   {}", r.fmt());
+
         let t = x.ty();
         if let Some((_, f)) = INSTRS.iter().find(|(i, _)| i == &t) {
-            f(self, r, v, x)
+            f(self, r, v, s, x)
         } else {
             Err(format!("invalid instruction {x:?}"))
         }
     }
 
-    pub fn exe_body(&mut self, i: usize) -> Res<Obj> {
+    pub fn exe_body(&mut self, i: usize, s: Option<Stk>) -> Res<Obj> {
         let b = self.bodies[i];
         let mut r = Regs::new();
         let mut v = Vars::new(b.vars);
+        let mut s = if let Some(s) = s { s } else { Stk::new() };
+
+        (0..b.vars).for_each(|i| v[i] = s.pop());
 
         for x in self.iter_body(i) {
-            self.exe_instr(&mut r, &mut v, x)?;
+            self.exe_instr(&mut r, &mut v, &mut s, x)?;
         }
 
+        dbgln!("returning: {:?}", r[RR]);
         Ok(r[RR])
+    }
+
+    #[inline]
+    pub fn exe_label(&mut self, i: usize) -> Res<Obj> {
+        self.exe_body(i, None)
+    }
+
+    pub fn exe_fun(&mut self, i: usize) -> Res<Obj> {
+        let stk = Stk((0..self.bodies[i].vars).map(|x| None).collect());
+        self.exe_body(i, Some(stk))
     }
 
     pub fn exe_block(&mut self, i: usize) -> Res<Obj> {
         let Block(i, t) = self.blocks[i];
-        self.exe_body(i)
+        match t {
+            BlockType::Label => self.exe_label(i),
+            BlockType::Fun => self.exe_fun(i),
+        }
     }
 }
 
@@ -167,14 +223,14 @@ macro_rules! un {
 
 macro_rules! mkinstr {
     (math $n:ident, $as:ident, $op:ident) => {{
-        mkinstr!($n(to, x)(_, reg, _, i) {
+        mkinstr!($n(to, x)(_, reg, _, _, i) {
             let x = reg[*x].$as();
             reg[*to].$op(x);
         })
     }};
 
-    ($t:ident($($p:pat),*)($vm:pat, $reg:pat, $var:pat, $in:ident) $x:expr ) => {{
-        (InstrType::$t, |$vm, $reg, $var, $in| {
+    ($t:ident($($p:pat),*)($vm:pat, $reg:pat, $var:pat, $stk:pat, $in:ident) $x:expr) => {{
+        (InstrType::$t, |$vm, $reg, $var, $stk, $in| {
             un!(Instr::$t($($p),*) = $in => { $x })
         })
     }};
@@ -182,21 +238,35 @@ macro_rules! mkinstr {
 
 static INSTRS: &[(
     InstrType,
-    for<'a> fn(&mut VM<'a>, &mut Regs, &mut Vars, &'a Instr) -> Res<()>,
+    for<'a> fn(&mut VM<'a>, &mut Regs, &mut Vars, &mut Stk, &'a Instr) -> Res<()>,
 )] = &[
-    mkinstr!(Lit(to, x)(_, reg, _, i) {
-        reg[*to] = *x;
+    mkinstr!(Lit(to, x)(_, reg, _, _, i) reg[*to] = *x),
+    mkinstr!(Cpy(to, x)(_, reg, _, _, i) reg[*to] = reg[*x]),
+    mkinstr!(Push(x)(_, reg, _, stk, i) stk.push(reg[*x])),
+    mkinstr!(Load(to, x)(_, reg, var, stk, i) if let Some(x) = var[*x] {
+        reg[*to] = x;
+    } else {
+        return err_fmt!("var {x} not allocated")
     }),
-
     mkinstr!(math AddI, as_i64, add_i),
     mkinstr!(math SubI, as_i64, sub_i),
     mkinstr!(math MulI, as_i64, mul_i),
     mkinstr!(math DivI, as_i64, div_i),
-
     mkinstr!(math AddF, as_f64, add_f),
     mkinstr!(math SubF, as_f64, sub_f),
     mkinstr!(math MulF, as_f64, mul_f),
     mkinstr!(math DivF, as_f64, div_f),
+    mkinstr!(Call(ret, x)(vm, reg, var, stk, i) {
+        /* function and function body */
+        let f = reg[*x].as_usize();
+        let fbod = vm.bodies[f];
+
+        /* call stack */
+        let cstk = Stk((0..fbod.vars).map(|_| stk.pop()).collect());
+        dbgln!("calling function {f} with callstack {cstk:?}");
+
+        reg[*ret] = vm.exe_body(f, Some(cstk))?;
+    }),
 ];
 
 #[macro_export]
@@ -244,6 +314,30 @@ mod test {
                         }
                 ),
                 Obj::from_f64(3.),
+            ),
+            (
+                mach!(
+                    /* sub */
+                    BlockType::Fun, 2 => {
+                        Instr::Load(RR, 0),
+                        Instr::Load(RA, 1),
+                        Instr::SubI(RR, RA),
+                        Instr::Ret,
+                    },
+                    /* main */
+                    BlockType::Label, 0 => {
+                        Instr::Lit(RA, Obj::from_i64(10)),
+                        Instr::Push(RA),
+
+                        Instr::Lit(RA, Obj::from_i64(07)),
+                        Instr::Push(RA),
+
+                        Instr::Lit(RA, Obj::from_usize(0)),
+                        Instr::Call(RR, RA),
+                        Instr::Ret,
+                    }
+                ),
+                Obj::from_i64(3),
             ),
         ]
         .into_iter()

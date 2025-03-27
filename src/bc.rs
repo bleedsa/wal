@@ -33,6 +33,11 @@ impl Obj {
     }
 
     #[inline]
+    pub fn as_usize(&self) -> usize {
+        unsafe { transmute(*self) }
+    }
+
+    #[inline]
     pub fn from_f64(x: f64) -> Self {
         unsafe { Self(transmute(x)) }
     }
@@ -71,11 +76,22 @@ mkindexed!((Reg, REGN) => {
     RR,
 });
 
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Regs(pub [Obj; REGN]);
 
 impl Regs {
     pub const fn new() -> Self {
         Self([Obj(0); REGN])
+    }
+
+    #[inline]
+    pub fn fmt(&self) -> String {
+        self.0
+            .iter()
+            .enumerate()
+            .map(|(i, o)| format!("{:4?} = {o:?}", Reg::from_usize(i)))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 }
 
@@ -100,6 +116,8 @@ mkenums!((Instr, InstrType) => {
     Push(Reg),
     /* pop from stack and move into reg */
     Pop(Reg),
+    /* load var y into reg x */
+    Load(Reg, usize),
 
     /* copy y into x */
     Cpy(Reg, Reg),
@@ -110,6 +128,9 @@ mkenums!((Instr, InstrType) => {
     AddI(Reg, Reg), SubI(Reg, Reg), MulI(Reg, Reg), DivI(Reg, Reg),
     AddF(Reg, Reg), SubF(Reg, Reg), MulF(Reg, Reg), DivF(Reg, Reg),
 
+    /* call a function y and place return value in x */
+    Call(Reg, Reg),
+
     /* return from the current body */
-    Ret(Reg),
+    Ret,
 });

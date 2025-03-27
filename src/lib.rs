@@ -11,15 +11,21 @@ macro_rules! mkindexed {
         pub enum $t {
             $( $n = ${index()} ),*
         }
+
+        impl $t {
+            #[inline]
+            pub fn from_usize(x: usize) -> Self {
+                match x {
+                    $( ${index()} => $t::$n, )*
+                    _ => unreachable!(),
+                }
+            }
+        }
     };
 
     /* an indexed enum with a constant `$i` containing the length */
     (($t:ident, $i:ident) => { $($n:ident),* $(,)* }) => {
-        #[derive(Copy, Clone, Debug, PartialEq)]
-        #[repr(usize)]
-        pub enum $t {
-            $( $n = ${index()} ),*
-        }
+        mkindexed!($t => { $($n),* });
 
         pub const $i: usize = ${count($n)};
     };
@@ -46,6 +52,21 @@ macro_rules! mkenums {
             }
         }
     };
+}
+
+#[macro_export]
+macro_rules! err_fmt {
+    ($($t:tt)*) => {{
+        Err(format!($($t)*))
+    }};
+}
+
+#[macro_export]
+macro_rules! dbgln {
+    ($($t:tt)*) => {{
+        #[cfg(debug_assertions)]
+        eprintln!($($t)*);
+    }};
 }
 
 pub type Res<T> = Result<T, String>;

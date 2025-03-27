@@ -38,14 +38,29 @@ pub struct Block(pub usize, pub BlockType);
 #[derive(Clone, Debug, PartialEq)]
 pub struct A(Vec<Obj>);
 
+impl A {
+    #[inline]
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+}
+
 /** a map from `u64` to `T` */
 #[derive(Clone, Debug, PartialEq)]
-pub struct Map<T>(pub HashMap<u64, T>);
+pub struct Map<T>(pub u64, pub HashMap<u64, T>);
 
 impl<T> Map<T> {
     #[inline]
     pub fn new() -> Self {
-        Self(HashMap::new())
+        Self(0, HashMap::new())
+    }
+
+    #[inline]
+    pub fn push(&mut self, x: T) -> u64 {
+        let i = self.0;
+        self.1.insert(i, x);
+        self.0 += 1;
+        i
     }
 }
 
@@ -54,14 +69,14 @@ impl<T> Index<&u64> for Map<T> {
 
     #[inline]
     fn index(&self, index: &u64) -> &Self::Output {
-        &self.0[index]
+        &self.1[index]
     }
 }
 
 impl<T> IndexMut<&u64> for Map<T> {
     #[inline]
     fn index_mut(&mut self, index: &u64) -> &mut Self::Output {
-        self.0
+        self.1
             .get_mut(index)
             .expect(&format!("no value at key {index}"))
     }
@@ -144,6 +159,10 @@ impl<'a> Iterator for BodyIter<'a> {
 }
 
 pub struct VM<'a> {
+    /** the ptr to the instruction we're currently executing */
+    pub i: usize,
+    /** the number of instructions */
+    pub len: usize,
     pub instrs: &'a [Instr],
     pub bodies: &'a [Body],
     pub blocks: &'a [Block],
@@ -155,6 +174,8 @@ pub struct VM<'a> {
 impl<'a> VM<'a> {
     pub fn new(instrs: &'a [Instr], bodies: &'a [Body], blocks: &'a [Block], flash: &'a [Obj]) -> Self {
         Self {
+            i: 0,
+            len: instrs.len(),
             instrs,
             bodies,
             blocks,
@@ -197,15 +218,46 @@ BODIES
         )
     }
 
-    pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &'a Instr) -> Res<()> {
+    pub fn find_label(&self, n: &str) -> Option<usize> {
+        self.instrs.iter()
+            .enumerate()
+            .find(|(_, x)| if let Instr::Label(s) = x { &n == s } else { false })
+            .map(|(i, _)| i)
+    }
+
+    pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &Instr) -> Res<()> {
         dbgln!(" > exec  {x:?}\n   where {}\n   & {:?}", r.fmt(), v);
 
         let t = x.ty();
+        if t == InstrType::Label {
+            return Ok(());
+        }
+
         if let Some((_, f)) = INSTRS.iter().find(|(i, _)| i == &t) {
             f(self, r, v, s, x)
         } else {
             Err(format!("invalid instruction {x:?}"))
         }
+    }
+
+    pub fn exe_at(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, i: usize) -> Res<()> {
+        dbgln!("exe_at(): executing instruction {i}");
+
+        self.i = i;
+        while self.i < self.len {
+            let x = &self.instrs[self.i];
+            if x == &Instr::Ret {
+                break;
+            }
+
+            self.exe_instr(r, v, s, x)?;
+            self.i += 1;
+        }
+
+        /* TODO: this magically makes it work? does it really? */
+        self.i -= 1;
+
+        Ok(())
     }
 
     pub fn exe_body(&mut self, i: usize, cs: Option<Vec<Option<Obj>>>) -> Res<Obj> {
@@ -220,10 +272,7 @@ BODIES
         };
         let mut s = Stk::new();
 
-        for x in self.iter_body(i) {
-            self.exe_instr(&mut r, &mut v, &mut s, x)?;
-        }
-
+        self.exe_at(&mut r, &mut v, &mut s, b.start)?;
         Ok(r[RR])
     }
 
@@ -232,11 +281,17 @@ BODIES
         self.exe_body(i, None)
     }
 
+    #[inline]
+    pub fn exe_fun(&mut self, i: usize, cs: Vec<Option<Obj>>) -> Res<Obj> {
+        dbgln!("executing function {i} with callstack {cs:?}");
+        self.exe_body(i, Some(cs))
+    }
+
     pub fn exe_block(&mut self, i: usize) -> Res<Obj> {
         let Block(i, t) = self.blocks[i];
         match t {
             BlockType::Label => self.exe_label(i),
-            BlockType::Fun => todo!(),
+            BlockType::Fun => Ok(Obj::from_usize(i)),
         }
     }
 }
@@ -273,8 +328,9 @@ macro_rules! mkinstr {
 
 static INSTRS: &[(
     InstrType,
-    for<'a> fn(&mut VM<'a>, &mut Regs, &mut Vars, &mut Stk, &'a Instr) -> Res<()>,
+    for<'a, 'b> fn(&mut VM<'a>, &mut Regs, &mut Vars, &mut Stk, &'b Instr) -> Res<()>,
 )] = &[
+    /* load things */
     mkinstr!(Lit(to, x)(_, reg, _, _, i) reg[*to] = *x),
     mkinstr!(Cpy(to, x)(_, reg, _, _, i) reg[*to] = reg[*x]),
     mkinstr!(Push(x)(_, reg, _, stk, i) stk.push(reg[*x])),
@@ -284,34 +340,73 @@ static INSTRS: &[(
         return err_fmt!("var {x} not allocated")
     }),
     mkinstr!(Static(to, x)(vm, reg, _, _, i) reg[*to] = vm.flash[*x]),
+    /* integer math */
+    mkinstr!(DivI(x, y)(_, reg, _, _, i) {
+        let y = reg[*y].as_i64();
+        reg[*x].div_i(y);
+    }),
     mkinstr!(math AddI, addi, i64),
     mkinstr!(math SubI, subi, i64),
     mkinstr!(math MulI, muli, i64),
-    mkinstr!(math DivI, divi, i64),
+    // mkinstr!(math DivI, divi, i64),
+    mkinstr!(IncI(x)(_, reg, _, _, i) reg[*x].add_i(1)),
+    /* float math */
     mkinstr!(math AddF, addf, f64),
     mkinstr!(math SubF, subf, f64),
     mkinstr!(math MulF, mulf, f64),
     mkinstr!(math DivF, divf, f64),
-    mkinstr!(Call(ret, x)(vm, reg, var, stk, i) {
+    /* functions */
+    mkinstr!(Call(ret, x)(vm, reg, _, stk, i) {
         /* function and function body */
         let f = reg[*x].as_usize();
         let fbod = vm.bodies[f];
 
         /* call stack */
-        let cstk = (0..fbod.vars).map(|i| stk.pop()).rev().collect();
+        let cstk = (0..fbod.vars).map(|_| stk.pop()).rev().collect();
 
-        let r = vm.exe_body(f, Some(cstk))?;
+        let r = vm.exe_fun(f, cstk)?;
         dbgln!("got {r:?} from body");
         reg[*ret] = r;
+    }),
+    /* vector ops */
+    mkinstr!(NewA(to)(vm, reg, _, _, i) {
+        let i = vm.vecs.push(A::new());
+        reg[*to] = Obj::from_u64(i);
+    }),
+    /* bools */
+    mkinstr!(CmpI(x, y)(_, reg, _, _, i) {
+        let y = reg[*y];
+        let r = reg[*x].cmp_i(y);
+        reg[RCF] = r;
+    }),
+    /* jumps */
+    mkinstr!(Goto(lbl)(vm, reg, var, stk, i) {
+        let idx = if let Some(x) = vm.find_label(lbl) {
+            x
+        } else {
+            return err_fmt!("Goto(): label {lbl} not found");
+        };
+        vm.exe_at(reg, var, stk, idx)?;
+    }),
+    mkinstr!(GotoZ(lbl)(vm, reg, var, stk, i) {
+        dbgln!("RCF: {}", reg[RCF].as_i64());
+        if reg[RCF].as_i64() == 0 {
+            let idx = if let Some(x) = vm.find_label(lbl) {
+                x
+            } else {
+                return err_fmt!("GotoZ(): label {lbl} not found");
+            };
+            vm.exe_at(reg, var, stk, idx)?;
+        }
     }),
 ];
 
 #[macro_export]
 macro_rules! mach {
-
     ($($t:expr, $v:expr => { $($x:expr),* $(,)* }),* $(,)*) => {{
         mach!([], $($t, $v => { $($x),* }),*)
     }};
+
     ([$($f:expr),* $(,)*], $($t:expr, $v:expr
        => { $($x:expr),* $(,)* }
     ),* $(,)*) => {{
@@ -335,7 +430,6 @@ macro_rules! mach {
 
         (blk, instrs, bodies, blocks, flash)
     }};
-
 }
 
 #[cfg(test)]
@@ -368,7 +462,7 @@ mod test {
             mathtest!(AddI(Obj::from_i64(-5), Obj::from_i64(7)) == Obj::from_i64(2)),
             mathtest!(SubI(Obj::from_i64(10), Obj::from_i64(3)) == Obj::from_i64(7)),
             mathtest!(MulI(Obj::from_i64(-8), Obj::from_i64(2)) == Obj::from_i64(-16)),
-            mathtest!(DivI(Obj::from_i64(16), Obj::from_i64(2)) == Obj::from_i64(8)),
+            mathtest!(DivI(Obj::from_i64(16), Obj::from_i64(3)) == Obj::from_i64(8)),
             (
                 mach!(
                     /* sub */

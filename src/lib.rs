@@ -1,4 +1,5 @@
 #![feature(macro_metavar_expr)]
+#![allow(static_mut_refs)]
 
 pub mod bc;
 pub mod vm;
@@ -7,7 +8,6 @@ pub mod vm;
 macro_rules! mkindexed {
     ($t:ident => { $($n:ident),* $(,)* }) => {
         #[derive(Copy, Clone, Debug, PartialEq)]
-        #[repr(usize)]
         pub enum $t {
             $( $n = ${index()} ),*
         }

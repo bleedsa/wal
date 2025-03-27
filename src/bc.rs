@@ -31,7 +31,7 @@ macro_rules! impl_asm_math {
             };
 
             /* TODO: why is this dbgln load bearing? */
-            dbgln!("x: {}, y: {}", $x, $y);
+            dbgln!("{}()\tx: {}, y: {}", stringify!($n), $x, $y);
 
             unsafe {
                 asm!($($t)*);
@@ -52,6 +52,32 @@ macro_rules! impl_asm_math {
 pub struct Obj(pub u64);
 
 impl Obj {
+    /*
+    pub fn cmpi(&mut self, y: Obj) -> i64 {
+        let (x, y): (i64, i64) = unsafe {
+            (transmute(self.0), transmute(y.0))
+        };
+        let cf: i64;
+        let zf: i64;
+
+        unsafe {
+            asm!(
+                "cmp {x}, {y}",
+                "mov zf, {zf}",
+                "mov {cf}, cf",
+                x = in(reg) x,
+                y = in(reg) y,
+                cf = out(reg) cf,
+                zf = out(reg) zf,
+            );
+            dbgln!("cmpi()\tx: {x}, y: {y} = ({zf}, {cf})");
+        };
+
+
+        unsafe { cf }
+    }
+    */
+
     #[inline]
     pub fn from_usize(x: usize) -> Self {
         unsafe { Self(transmute(x)) }
@@ -81,6 +107,16 @@ impl Obj {
     pub fn as_i64(&self) -> i64 {
         unsafe { transmute(self.0) }
     }
+    
+    #[inline]
+    pub fn from_u64(x: u64) -> Self {
+        unsafe { Self(transmute(x)) }
+    }
+
+    #[inline]
+    pub fn as_u64(&self) -> u64 {
+        unsafe { transmute(self.0) }
+    }
 
     impl_asm_math!(addi(x, y) => {
         "add {x}, {y}",
@@ -97,11 +133,13 @@ impl Obj {
         x = inout(reg) x,
         y = in(reg) y,
     });
+    /*
     impl_asm_math!(divi(x, y) => {
         "idiv {x}, {y}",
         x = inout(reg) x,
         y = in(reg) y,
     });
+    */
 
     impl_math!(add_i(x: i64, y: i64) => x+y);
     impl_math!(sub_i(x: i64, y: i64) => x-y);
@@ -133,6 +171,11 @@ impl Obj {
     impl_math!(sub_f(x: f64, y: f64) => x-y);
     impl_math!(mul_f(x: f64, y: f64) => x*y);
     impl_math!(div_f(x: f64, y: f64) => x/y);
+
+    #[inline]
+    pub fn cmp_i(&self, x: Obj) -> Obj {
+        Obj::from_i64(self.as_i64() - x.as_i64())
+    }
 }
 
 mkindexed!((Reg, REGN) => {
@@ -141,6 +184,8 @@ mkindexed!((Reg, REGN) => {
     RA, RB, RC, RD, RE, RF, RG,
     /* return */
     RR,
+    /* comparison flag */
+    RCF,
 });
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -187,6 +232,8 @@ mkenums!((Instr, InstrType) => {
     Load(Reg, usize),
     /* load static object y into reg x */
     Static(Reg, usize),
+    /* a label */
+    Label(&'static str),
 
     /* copy y into x */
     Cpy(Reg, Reg),
@@ -194,11 +241,22 @@ mkenums!((Instr, InstrType) => {
     Lit(Reg, Obj),
 
     /* math */
-    AddI(Reg, Reg), SubI(Reg, Reg), MulI(Reg, Reg), DivI(Reg, Reg),
+    IncI(Reg), DecI(Reg), IncF(Reg), DecF(Reg),
+    AddI(Reg, Reg), SubI(Reg, Reg), MulI(Reg, Reg), DivI(Reg, Reg), 
     AddF(Reg, Reg), SubF(Reg, Reg), MulF(Reg, Reg), DivF(Reg, Reg),
+
+    /* bools and jumps */
+    CmpI(Reg, Reg),
+    Goto(&'static str),
+    GotoZ(&'static str),
 
     /* call a function y and place return value in x */
     Call(Reg, Reg),
+
+    /* vector ops */
+    NewA(Reg),
+    PushA(Reg, Reg),
+    PopA(Reg, Reg),
 
     /* return from the current body */
     Ret,

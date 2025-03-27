@@ -1,4 +1,4 @@
-use wal::bc::{Instr, InstrType, Obj};
+use wal::{vm::{Block, Body, VM}, bc::{Instr, InstrType, Obj}};
 
 macro_rules! sizes {
     [$($t:ty),* $(,)*] => {{
@@ -7,7 +7,7 @@ macro_rules! sizes {
 }
 
 fn main() {
-    sizes![Obj, Instr, InstrType,]
+    sizes![Obj, Instr, InstrType, Block, Body, VM]
         .iter()
         .for_each(|(n, s)| println!("{n:10}: {}", s * 8));
 }

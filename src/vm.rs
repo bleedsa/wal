@@ -5,8 +5,8 @@ use crate::{
 };
 use std::{
     collections::HashMap,
-    ops::{Index, IndexMut},
     mem::transmute,
+    ops::{Index, IndexMut},
 };
 
 #[macro_export]
@@ -155,9 +155,9 @@ impl<'a> VM<'a> {
 }
 
 macro_rules! un {
-    ($p:pat = $x:expr => { $($ex:stmt);*; }) => {{
+    ($p:pat = $x:expr => $e:expr) => {{
         if let $p = $x {
-            $($ex);*;
+            $e
             Ok(())
         } else {
             unreachable!()
@@ -165,23 +165,38 @@ macro_rules! un {
     }};
 }
 
-static INSTRS: &[(InstrType, for<'a> fn(&mut VM<'a>, &mut Regs, &mut Vars, &'a Instr) -> Res<()>)] = &[
-    (InstrType::Lit, |_, reg, _, i| {
-        if let Instr::Lit(to, x) = i {
-            reg[*to] = *x;
-            Ok(())
-        } else {
-            unreachable!()
-        }
+macro_rules! mkinstr {
+    (math $n:ident, $as:ident, $op:ident) => {{
+        mkinstr!($n(to, x)(_, reg, _, i) {
+            let x = reg[*x].$as();
+            reg[*to].$op(x);
+        })
+    }};
+
+    ($t:ident($($p:pat),*)($vm:pat, $reg:pat, $var:pat, $in:ident) $x:expr ) => {{
+        (InstrType::$t, |$vm, $reg, $var, $in| {
+            un!(Instr::$t($($p),*) = $in => { $x })
+        })
+    }};
+}
+
+static INSTRS: &[(
+    InstrType,
+    for<'a> fn(&mut VM<'a>, &mut Regs, &mut Vars, &'a Instr) -> Res<()>,
+)] = &[
+    mkinstr!(Lit(to, x)(_, reg, _, i) {
+        reg[*to] = *x;
     }),
-    (InstrType::AddI, |_, reg, _, i| un!(Instr::AddI(to, x) = i => {
-        let int = reg[*x].0;
-        reg[*to].add_i(int);
-    })),
-    (InstrType::AddF, |_, reg, _, i| un!(Instr::AddF(to, x) = i => {
-        let flt = reg[*x].as_f64();
-        reg[*to].add_f(flt);
-    })),
+
+    mkinstr!(math AddI, as_i64, add_i),
+    mkinstr!(math SubI, as_i64, sub_i),
+    mkinstr!(math MulI, as_i64, mul_i),
+    mkinstr!(math DivI, as_i64, div_i),
+
+    mkinstr!(math AddF, as_f64, add_f),
+    mkinstr!(math SubF, as_f64, sub_f),
+    mkinstr!(math MulF, as_f64, mul_f),
+    mkinstr!(math DivF, as_f64, div_f),
 ];
 
 #[macro_export]
@@ -201,26 +216,38 @@ macro_rules! mach {
 
 #[cfg(test)]
 mod test {
-    use crate::{push, mach, vm::{VM, BlockType, Block, Body}, bc::{Obj, Instr, Reg::*}};
+    use crate::{
+        bc::{Instr, Obj, Reg::*},
+        mach, push,
+        vm::{Block, BlockType, Body, VM},
+    };
 
     #[test]
     fn machines() {
         for ((i, instrs, bodies, blocks), y) in [
-            (mach!(
-                    BlockType::Label, 0 => {
-                        Instr::Lit(RR, Obj(1)),
-                        Instr::Lit(RA, Obj(2)),
-                        Instr::AddI(RR, RA),
-                    }
-            ), Obj(3)),
-            (mach!(
-                    BlockType::Label, 0 => {
-                        Instr::Lit(RR, Obj::from_f64(1.)),
-                        Instr::Lit(RA, Obj::from_f64(2.)),
-                        Instr::AddF(RR, RA),
-                    }
-            ), Obj::from_f64(3.)),
-        ].into_iter() {
+            (
+                mach!(
+                        BlockType::Label, 0 => {
+                            Instr::Lit(RR, Obj::from_i64(-1)),
+                            Instr::Lit(RA, Obj::from_i64(2)),
+                            Instr::AddI(RR, RA),
+                        }
+                ),
+                Obj::from_i64(1),
+            ),
+            (
+                mach!(
+                        BlockType::Label, 0 => {
+                            Instr::Lit(RR, Obj::from_f64(1.)),
+                            Instr::Lit(RA, Obj::from_f64(2.)),
+                            Instr::AddF(RR, RA),
+                        }
+                ),
+                Obj::from_f64(3.),
+            ),
+        ]
+        .into_iter()
+        {
             let mut vm = VM::new(&instrs, &bodies, &blocks);
             assert_eq!(vm.exe_block(i).unwrap(), y)
         }

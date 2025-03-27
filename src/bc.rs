@@ -4,6 +4,18 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+macro_rules! impl_math {
+    ($n:ident($x:ident: $xt:ty, $y:ident: $yt:ty) => $e:expr) => {
+        #[inline]
+        pub fn $n(&mut self, $y: $yt) {
+            unsafe {
+                let $x: $xt = transmute(self.0);
+                self.0 = transmute($e);
+            }
+        }
+    };
+}
+
 /**
  * a bytecode object.
  *
@@ -15,28 +27,40 @@ use std::{
 pub struct Obj(pub u64);
 
 impl Obj {
+    #[inline]
     pub fn from_usize(x: usize) -> Self {
         unsafe { Self(transmute(x)) }
     }
 
+    #[inline]
     pub fn from_f64(x: f64) -> Self {
         unsafe { Self(transmute(x)) }
     }
 
+    #[inline]
     pub fn as_f64(&self) -> f64 {
         unsafe { transmute(self.0) }
     }
 
-    pub fn add_i(&mut self, x: u64) {
-        self.0 += x;
+    #[inline]
+    pub fn from_i64(x: i64) -> Self {
+        unsafe { Self(transmute(x)) }
     }
 
-    pub fn add_f(&mut self, x: f64) {
-        unsafe {
-            let f: f64 = transmute(self.0);
-            self.0 = transmute(f + x);
-        }
+    #[inline]
+    pub fn as_i64(&self) -> i64 {
+        unsafe { transmute(self.0) }
     }
+
+    impl_math!(add_i(x: i64, y: i64) => x+y);
+    impl_math!(sub_i(x: i64, y: i64) => x-y);
+    impl_math!(mul_i(x: i64, y: i64) => x*y);
+    impl_math!(div_i(x: i64, y: i64) => x/y);
+
+    impl_math!(add_f(x: f64, y: f64) => x+y);
+    impl_math!(sub_f(x: f64, y: f64) => x-y);
+    impl_math!(mul_f(x: f64, y: f64) => x*y);
+    impl_math!(div_f(x: f64, y: f64) => x/y);
 }
 
 mkindexed!((Reg, REGN) => {
@@ -83,8 +107,8 @@ mkenums!((Instr, InstrType) => {
     Lit(Reg, Obj),
 
     /* math */
-    AddI(Reg, Reg),
-    AddF(Reg, Reg),
+    AddI(Reg, Reg), SubI(Reg, Reg), MulI(Reg, Reg), DivI(Reg, Reg),
+    AddF(Reg, Reg), SubF(Reg, Reg), MulF(Reg, Reg), DivF(Reg, Reg),
 
     /* return from the current body */
     Ret(Reg),

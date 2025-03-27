@@ -1,11 +1,12 @@
 use crate::{
     Res,
     bc::{Instr, InstrType, Obj, Reg::*, Regs},
-    err_fmt, mkindexed, dbgln,
+    dbgln, err_fmt, mkindexed,
 };
 use std::{
     collections::HashMap,
     ops::{Index, IndexMut},
+    mem::transmute,
 };
 
 #[macro_export]
@@ -20,9 +21,9 @@ macro_rules! push {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct Body {
     /** the index to start executing in `VM.instrs` */
-    start: usize,
+    pub start: usize,
     /** the number of vars to allocate */
-    vars: usize,
+    pub vars: usize,
 }
 
 mkindexed!(BlockType => {
@@ -32,7 +33,7 @@ mkindexed!(BlockType => {
 
 /** (body index, execution time) */
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct Block(pub usize, BlockType);
+pub struct Block(pub usize, pub BlockType);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct A(Vec<Obj>);
@@ -66,6 +67,7 @@ impl<T> IndexMut<&u64> for Map<T> {
     }
 }
 
+/** a buffer of variables */
 #[derive(Clone, Debug, PartialEq)]
 pub struct Vars(Vec<Option<Obj>>);
 
@@ -89,6 +91,7 @@ impl IndexMut<usize> for Vars {
     }
 }
 
+/** a stack */
 #[derive(Clone, Debug, PartialEq)]
 pub struct Stk(Option<Vec<Obj>>);
 
@@ -144,16 +147,18 @@ pub struct VM<'a> {
     pub instrs: &'a [Instr],
     pub bodies: &'a [Body],
     pub blocks: &'a [Block],
+    pub flash: &'a [Obj],
     pub vecs: Map<A>,
     pub strs: Map<String>,
 }
 
 impl<'a> VM<'a> {
-    pub fn new(instrs: &'a [Instr], bodies: &'a [Body], blocks: &'a [Block]) -> Self {
+    pub fn new(instrs: &'a [Instr], bodies: &'a [Body], blocks: &'a [Block], flash: &'a [Obj]) -> Self {
         Self {
             instrs,
             bodies,
             blocks,
+            flash,
             vecs: Map::new(),
             strs: Map::new(),
         }
@@ -164,8 +169,36 @@ impl<'a> VM<'a> {
         BodyIter::new(self.bodies[i], self.instrs)
     }
 
+    pub fn fmt(&self) -> String {
+        format!(
+            r#"INSTRS
+======
+{ins}
+BODIES
+======
+{bod}"#,
+            ins = self
+                .instrs
+                .iter()
+                .enumerate()
+                .map(|(i, x)| format!("{i:4}: {x:?}\n"))
+                .collect::<String>(),
+            bod = self
+                .bodies
+                .iter()
+                .enumerate()
+                .map(|(i, x)| format!(
+                        "{i:4}: {x:?}\n{}",
+                        self.iter_body(i)
+                            .map(|x| format!(" > {x:?}\n"))
+                            .collect::<String>()
+                ))
+                .collect::<String>(),
+        )
+    }
+
     pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &'a Instr) -> Res<()> {
-        dbgln!(" > exec {x:?}\n   {}", r.fmt());
+        dbgln!(" > exec  {x:?}\n   where {}\n   & {:?}", r.fmt(), v);
 
         let t = x.ty();
         if let Some((_, f)) = INSTRS.iter().find(|(i, _)| i == &t) {
@@ -175,19 +208,22 @@ impl<'a> VM<'a> {
         }
     }
 
-    pub fn exe_body(&mut self, i: usize, s: Option<Stk>) -> Res<Obj> {
+    pub fn exe_body(&mut self, i: usize, cs: Option<Vec<Option<Obj>>>) -> Res<Obj> {
+        dbgln!("executing body {i} with callstack {cs:?}");
+
         let b = self.bodies[i];
         let mut r = Regs::new();
-        let mut v = Vars::new(b.vars);
-        let mut s = if let Some(s) = s { s } else { Stk::new() };
-
-        (0..b.vars).for_each(|i| v[i] = s.pop());
+        let mut v = if let Some(a) = cs {
+            Vars(a.into_iter().rev().collect())
+        } else {
+            Vars::new(b.vars)
+        };
+        let mut s = Stk::new();
 
         for x in self.iter_body(i) {
             self.exe_instr(&mut r, &mut v, &mut s, x)?;
         }
 
-        dbgln!("returning: {:?}", r[RR]);
         Ok(r[RR])
     }
 
@@ -196,16 +232,11 @@ impl<'a> VM<'a> {
         self.exe_body(i, None)
     }
 
-    pub fn exe_fun(&mut self, i: usize) -> Res<Obj> {
-        let stk = Stk((0..self.bodies[i].vars).map(|x| None).collect());
-        self.exe_body(i, Some(stk))
-    }
-
     pub fn exe_block(&mut self, i: usize) -> Res<Obj> {
         let Block(i, t) = self.blocks[i];
         match t {
             BlockType::Label => self.exe_label(i),
-            BlockType::Fun => self.exe_fun(i),
+            BlockType::Fun => todo!(),
         }
     }
 }
@@ -222,10 +253,14 @@ macro_rules! un {
 }
 
 macro_rules! mkinstr {
-    (math $n:ident, $as:ident, $op:ident) => {{
+    (math $n:ident, $op:ident, $as:ty) => {{
         mkinstr!($n(to, x)(_, reg, _, _, i) {
-            let x = reg[*x].$as();
+            let x = reg[*x];
             reg[*to].$op(x);
+            dbgln!("result of {}: {:?}", stringify!($op), unsafe {
+                let t: $as = transmute(reg[*to]);
+                t
+            });
         })
     }};
 
@@ -243,78 +278,97 @@ static INSTRS: &[(
     mkinstr!(Lit(to, x)(_, reg, _, _, i) reg[*to] = *x),
     mkinstr!(Cpy(to, x)(_, reg, _, _, i) reg[*to] = reg[*x]),
     mkinstr!(Push(x)(_, reg, _, stk, i) stk.push(reg[*x])),
-    mkinstr!(Load(to, x)(_, reg, var, stk, i) if let Some(x) = var[*x] {
+    mkinstr!(Load(to, x)(_, reg, var, _, i) if let Some(x) = var[*x] {
         reg[*to] = x;
     } else {
         return err_fmt!("var {x} not allocated")
     }),
-    mkinstr!(math AddI, as_i64, add_i),
-    mkinstr!(math SubI, as_i64, sub_i),
-    mkinstr!(math MulI, as_i64, mul_i),
-    mkinstr!(math DivI, as_i64, div_i),
-    mkinstr!(math AddF, as_f64, add_f),
-    mkinstr!(math SubF, as_f64, sub_f),
-    mkinstr!(math MulF, as_f64, mul_f),
-    mkinstr!(math DivF, as_f64, div_f),
+    mkinstr!(Static(to, x)(vm, reg, _, _, i) reg[*to] = vm.flash[*x]),
+    mkinstr!(math AddI, addi, i64),
+    mkinstr!(math SubI, subi, i64),
+    mkinstr!(math MulI, muli, i64),
+    mkinstr!(math DivI, divi, i64),
+    mkinstr!(math AddF, addf, f64),
+    mkinstr!(math SubF, subf, f64),
+    mkinstr!(math MulF, mulf, f64),
+    mkinstr!(math DivF, divf, f64),
     mkinstr!(Call(ret, x)(vm, reg, var, stk, i) {
         /* function and function body */
         let f = reg[*x].as_usize();
         let fbod = vm.bodies[f];
 
         /* call stack */
-        let cstk = Stk((0..fbod.vars).map(|_| stk.pop()).collect());
-        dbgln!("calling function {f} with callstack {cstk:?}");
+        let cstk = (0..fbod.vars).map(|i| stk.pop()).rev().collect();
 
-        reg[*ret] = vm.exe_body(f, Some(cstk))?;
+        let r = vm.exe_body(f, Some(cstk))?;
+        dbgln!("got {r:?} from body");
+        reg[*ret] = r;
     }),
 ];
 
 #[macro_export]
 macro_rules! mach {
+
     ($($t:expr, $v:expr => { $($x:expr),* $(,)* }),* $(,)*) => {{
-        let (mut instrs, mut bodies, mut blocks) = (Vec::new(), Vec::new(), Vec::new());
+        mach!([], $($t, $v => { $($x),* }),*)
+    }};
+    ([$($f:expr),* $(,)*], $($t:expr, $v:expr
+       => { $($x:expr),* $(,)* }
+    ),* $(,)*) => {{
+        use $crate::vm::{Body, Block};
+
+        let (mut instrs, mut bodies, mut blocks, mut flash) = (
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        );
+
+        $(flash.push($f);)*
+
         $(
             let i = instrs.len();
             $(instrs.push($x);)*
-            let bod = push!(bodies => [Body { start: i, vars: $v }]);
-            let blk = push!(blocks => [Block(bod, $t)]);
+            let bod = $crate::push!(bodies => [Body { start: i, vars: $v }]);
+            let blk = $crate::push!(blocks => [Block(bod, $t)]);
         )*
 
-        (blk, instrs, bodies, blocks)
+        (blk, instrs, bodies, blocks, flash)
     }};
+
 }
 
 #[cfg(test)]
 mod test {
     use crate::{
         bc::{Instr, Obj, Reg::*},
-        mach, push,
+        dbgln, mach, push,
         vm::{Block, BlockType, Body, VM},
     };
 
+    macro_rules! mathtest {
+        ($in:ident($x:expr, $y:expr) == $r:expr) => {{
+            (
+                mach!(
+                    [$x, $y],
+                    BlockType::Label, 0 => {
+                        Instr::Static(RR, 0),
+                        Instr::Static(RA, 1),
+                        Instr::$in(RR, RA),
+                    }
+                ),
+                $r
+            )
+        }};
+    }
+
     #[test]
     fn machines() {
-        for ((i, instrs, bodies, blocks), y) in [
-            (
-                mach!(
-                        BlockType::Label, 0 => {
-                            Instr::Lit(RR, Obj::from_i64(-1)),
-                            Instr::Lit(RA, Obj::from_i64(2)),
-                            Instr::AddI(RR, RA),
-                        }
-                ),
-                Obj::from_i64(1),
-            ),
-            (
-                mach!(
-                        BlockType::Label, 0 => {
-                            Instr::Lit(RR, Obj::from_f64(1.)),
-                            Instr::Lit(RA, Obj::from_f64(2.)),
-                            Instr::AddF(RR, RA),
-                        }
-                ),
-                Obj::from_f64(3.),
-            ),
+        for ((i, instrs, bodies, blocks, flash), y) in [
+            mathtest!(AddI(Obj::from_i64(-5), Obj::from_i64(7)) == Obj::from_i64(2)),
+            mathtest!(SubI(Obj::from_i64(10), Obj::from_i64(3)) == Obj::from_i64(7)),
+            mathtest!(MulI(Obj::from_i64(-8), Obj::from_i64(2)) == Obj::from_i64(-16)),
+            mathtest!(DivI(Obj::from_i64(16), Obj::from_i64(2)) == Obj::from_i64(8)),
             (
                 mach!(
                     /* sub */
@@ -342,7 +396,8 @@ mod test {
         ]
         .into_iter()
         {
-            let mut vm = VM::new(&instrs, &bodies, &blocks);
+            let mut vm = VM::new(&instrs, &bodies, &blocks, &flash);
+            dbgln!("{}", vm.fmt());
             assert_eq!(vm.exe_block(i).unwrap(), y)
         }
     }

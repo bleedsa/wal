@@ -1,7 +1,8 @@
-use crate::{mkenums, mkindexed};
+use crate::{mkenums, mkindexed, dbgln};
 use std::{
     mem::transmute,
     ops::{Index, IndexMut},
+    arch::asm,
 };
 
 macro_rules! impl_math {
@@ -10,8 +11,32 @@ macro_rules! impl_math {
         pub fn $n(&mut self, $y: $yt) {
             unsafe {
                 let $x: $xt = transmute(self.0);
+                dbgln!("{}: {}", stringify!($e), $e);
                 self.0 = transmute($e);
             }
+        }
+    };
+}
+
+macro_rules! impl_asm_math {
+    ($n:ident($x:ident, $y:ident) => { $($t:tt)* }) => {
+        impl_asm_math!($n($x: i64, $y: i64) => { $($t)* });
+    };
+
+    ($n:ident($x:ident: $xt:ty, $y:ident: $yt:ty) => { $($t:tt)* }) => {
+        #[inline]
+        pub fn $n(&mut self, y: Obj) {
+            let (mut $x, $y): ($xt, $yt) = unsafe {
+                (transmute(self.0), transmute(y.0))
+            };
+
+            /* TODO: why is this dbgln load bearing? */
+            dbgln!("x: {}, y: {}", $x, $y);
+
+            unsafe {
+                asm!($($t)*);
+                self.0 = transmute($x);
+            };
         }
     };
 }
@@ -57,10 +82,52 @@ impl Obj {
         unsafe { transmute(self.0) }
     }
 
+    impl_asm_math!(addi(x, y) => {
+        "add {x}, {y}",
+        x = inout(reg) x,
+        y = in(reg) y,
+    });
+    impl_asm_math!(subi(x, y) => {
+        "sub {x}, {y}",
+        x = inout(reg) x,
+        y = in(reg) y,
+    });
+    impl_asm_math!(muli(x, y) => {
+        "imul {x}, {y}",
+        x = inout(reg) x,
+        y = in(reg) y,
+    });
+    impl_asm_math!(divi(x, y) => {
+        "idiv {x}, {y}",
+        x = inout(reg) x,
+        y = in(reg) y,
+    });
+
     impl_math!(add_i(x: i64, y: i64) => x+y);
     impl_math!(sub_i(x: i64, y: i64) => x-y);
     impl_math!(mul_i(x: i64, y: i64) => x*y);
     impl_math!(div_i(x: i64, y: i64) => x/y);
+
+    impl_asm_math!(addf(x: f64, y: f64) => {
+        "addsd {x}, {y}",
+        x = inout(xmm_reg) x,
+        y = in(xmm_reg) y,
+    });
+    impl_asm_math!(subf(x: f64, y: f64) => {
+        "subsd {x}, {y}",
+        x = inout(xmm_reg) x,
+        y = in(xmm_reg) y,
+    });
+    impl_asm_math!(mulf(x: f64, y: f64) => {
+        "mulsd {x}, {y}",
+        x = inout(xmm_reg) x,
+        y = in(xmm_reg) y,
+    });
+    impl_asm_math!(divf(x: f64, y: f64) => {
+        "divsd {x}, {y}",
+        x = inout(xmm_reg) x,
+        y = in(xmm_reg) y,
+    });
 
     impl_math!(add_f(x: f64, y: f64) => x+y);
     impl_math!(sub_f(x: f64, y: f64) => x-y);
@@ -118,6 +185,8 @@ mkenums!((Instr, InstrType) => {
     Pop(Reg),
     /* load var y into reg x */
     Load(Reg, usize),
+    /* load static object y into reg x */
+    Static(Reg, usize),
 
     /* copy y into x */
     Cpy(Reg, Reg),

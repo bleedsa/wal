@@ -41,6 +41,26 @@ macro_rules! impl_asm_math {
     };
 }
 
+macro_rules! obj_into {
+    [$($t:ty => [$to:ident, $from:ident]),* $(,)*] => {
+        $(
+            #[inline]
+            pub fn $to(&self) -> $t {
+                unsafe {
+                    transmute(self.0)
+                }
+            }
+
+            #[inline]
+            pub fn $from(x: $t) -> Self {
+                unsafe {
+                    Self(transmute(x))
+                }
+            }
+        )*
+    };
+}
+
 /**
  * a bytecode object.
  *
@@ -78,45 +98,12 @@ impl Obj {
     }
     */
 
-    #[inline]
-    pub fn from_usize(x: usize) -> Self {
-        unsafe { Self(transmute(x)) }
-    }
-
-    #[inline]
-    pub fn as_usize(&self) -> usize {
-        unsafe { transmute(*self) }
-    }
-
-    #[inline]
-    pub fn from_f64(x: f64) -> Self {
-        unsafe { Self(transmute(x)) }
-    }
-
-    #[inline]
-    pub fn as_f64(&self) -> f64 {
-        unsafe { transmute(self.0) }
-    }
-
-    #[inline]
-    pub fn from_i64(x: i64) -> Self {
-        unsafe { Self(transmute(x)) }
-    }
-
-    #[inline]
-    pub fn as_i64(&self) -> i64 {
-        unsafe { transmute(self.0) }
-    }
-    
-    #[inline]
-    pub fn from_u64(x: u64) -> Self {
-        unsafe { Self(transmute(x)) }
-    }
-
-    #[inline]
-    pub fn as_u64(&self) -> u64 {
-        unsafe { transmute(self.0) }
-    }
+    obj_into![
+        u64 => [as_u64, from_u64],
+        usize => [as_usize, from_usize],
+        f64 => [as_f64, from_f64],
+        i64 => [as_i64, from_i64],
+    ];
 
     impl_asm_math!(addi(x, y) => {
         "add {x}, {y}",
@@ -233,7 +220,7 @@ mkenums!((Instr, InstrType) => {
     /* load static object y into reg x */
     Static(Reg, usize),
     /* a label */
-    Label(&'static str),
+    Label(usize),
 
     /* copy y into x */
     Cpy(Reg, Reg),
@@ -247,8 +234,9 @@ mkenums!((Instr, InstrType) => {
 
     /* bools and jumps */
     CmpI(Reg, Reg),
-    Goto(&'static str),
-    GotoZ(&'static str),
+    Goto(usize),
+    GotoZ(usize),
+    GotoNZ(usize),
 
     /* call a function y and place return value in x */
     Call(Reg, Reg),

@@ -231,10 +231,10 @@ BLOCKS
         )
     }
 
-    pub fn find_label(&self, n: &str) -> Option<usize> {
+    pub fn find_label(&self, n: &usize) -> Option<usize> {
         self.instrs.iter()
             .enumerate()
-            .find(|(_, x)| if let Instr::Label(s) = x { &n == s } else { false })
+            .find(|(_, x)| if let Instr::Label(s) = x { n == s } else { false })
             .map(|(i, _)| i + 1)
     }
 
@@ -263,7 +263,6 @@ BLOCKS
     pub fn exe_at(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, i: usize) -> Res<()> {
         dbgln!("exe_at(): executing instruction {i}");
 
-        let n = self.i;
         self.i = i;
         while self.i < self.len {
             let x = &self.instrs[self.i];
@@ -440,27 +439,26 @@ macro_rules! mach {
     }};
 
     ([$($f:expr),* $(,)*], $($t:expr, $v:expr
-       => { $($x:expr),* $(,)* }
+       => { $($x:expr),+ $(,)* }
     ),* $(,)*) => {{
         use $crate::vm::{Body, Block};
 
-        let (mut instrs, mut bodies, mut blocks, mut flash) = (
+        let (mut instrs, mut bodies, mut blocks, flash) = (
             Vec::new(),
             Vec::new(),
             Vec::new(),
-            Vec::new(),
+            Vec::from([$($f),*]),
         );
-
-        $(flash.push($f);)*
 
         $(
             let i = instrs.len();
             $(instrs.push($x);)*
             let bod = $crate::push!(bodies => [Body { start: i, vars: $v }]);
-            let blk = $crate::push!(blocks => [Block(bod, $t)]);
+            /* has to be prefixed with an underscore to suppress warning */
+            let _blk = $crate::push!(blocks => [Block(bod, $t)]);
         )*
 
-        (blk, instrs, bodies, blocks, flash)
+        (_blk, instrs, bodies, blocks, flash)
     }};
 }
 
@@ -468,8 +466,8 @@ macro_rules! mach {
 mod test {
     use crate::{
         bc::{Instr, Obj, Reg::*},
-        dbgln, mach, push,
-        vm::{Block, BlockType, Body, VM},
+        dbgln, mach,
+        vm::{BlockType, VM},
     };
 
     macro_rules! mathtest {

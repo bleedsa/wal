@@ -14,13 +14,13 @@ fn iota() -> Mach {
             Instr::Lit(RC, Obj::from_i64(0)), /* counter */
             Instr::Load(RB, 0),               /* limit */
             Instr::NewA(RR),
-            Instr::Label("loop"),
+            Instr::Label(0),
             Instr::CmpI(RC, RB),
-            Instr::GotoZ("end"),
+            Instr::GotoZ(1),
             Instr::PushA(RR, RC),
             Instr::IncI(RC),
-            Instr::Goto("loop"),
-            Instr::Label("end"),
+            Instr::Goto(0),
+            Instr::Label(1),
             Instr::Ret,
         },
         BlockType::Label, 0 => {

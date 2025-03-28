@@ -1,4 +1,4 @@
-use crate::{mkenums, mkindexed, dbgln};
+use crate::{mkenums, mkindexed, dbgln, vm::{VM, A}};
 use std::{
     mem::transmute,
     ops::{Index, IndexMut},
@@ -72,6 +72,18 @@ macro_rules! obj_into {
 pub struct Obj(pub u64);
 
 impl Obj {
+    obj_into![
+        u64 => [as_u64, from_u64],
+        usize => [as_usize, from_usize],
+        f64 => [as_f64, from_f64],
+        i64 => [as_i64, from_i64],
+    ];
+
+    #[inline]
+    pub fn as_a<'a>(&self, vm: &'a VM<'a>) -> &'a A {
+        vm.vec(&self.as_u64())
+    }
+
     /*
     pub fn cmpi(&mut self, y: Obj) -> i64 {
         let (x, y): (i64, i64) = unsafe {
@@ -97,13 +109,6 @@ impl Obj {
         unsafe { cf }
     }
     */
-
-    obj_into![
-        u64 => [as_u64, from_u64],
-        usize => [as_usize, from_usize],
-        f64 => [as_f64, from_f64],
-        i64 => [as_i64, from_i64],
-    ];
 
     impl_asm_math!(addi(x, y) => {
         "add {x}, {y}",

@@ -204,6 +204,7 @@ BODIES
 ======
 {bod}
 BLOCKS
+======
 {blk}"#,
             ins = self
                 .instrs
@@ -238,6 +239,11 @@ BLOCKS
             .map(|(i, _)| i + 1)
     }
 
+    #[inline]
+    pub fn vec(&'a self, idx: &u64) -> &'a A {
+        &self.vecs[idx]
+    }
+
     pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &Instr) -> Res<()> {
         dbgln!(" > exec  {x:?}\n   where {}\n   & {:?}", r.fmt(), v);
 
@@ -265,7 +271,6 @@ BLOCKS
 
         self.i = i;
         while self.i < self.len {
-            dbgln!("exe_at(): self.i: {}", self.i);
             let x = &self.instrs[self.i];
             if x == &Instr::Ret {
                 break;
@@ -297,7 +302,6 @@ BLOCKS
         for (n, x) in self.iter_body(i).enumerate() {
             self.i = n;
             self.exe_instr(&mut r, &mut v, &mut s, x)?;
-            dbgln!("self.i: {n}");
         }
 
         Ok(r[RR])
@@ -419,18 +423,15 @@ static INSTRS: &[(
         vm.i = i;
     }),
     mkinstr!(GotoZ(lbl)(vm, reg, var, stk, i) {
-        dbgln!("RCF: {}", reg[RCF].as_i64());
+        // dbgln!("RCF: {}", reg[RCF].as_i64());
         if reg[RCF].as_i64() == 0 {
             let idx = if let Some(x) = vm.find_label(lbl) {
                 x
             } else {
                 return err_fmt!("GotoZ(): label {lbl} not found");
             };
-            let i = vm.i;
 
             vm.exe_at(reg, var, stk, idx)?;
-
-            dbgln!("GotoZ({lbl}): resuming execution at {}({i})", vm.i);
         }
     }),
 ];

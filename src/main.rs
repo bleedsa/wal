@@ -5,8 +5,8 @@ type Mach = (usize, Vec<Instr>, Vec<Body>, Vec<Block>, Vec<Obj>);
 fn iota() -> Mach {
     mach!(
         [
-            /* !3 */
-            Obj::from_i64(3),
+            /* !n */
+            Obj::from_i64(10),
             /* fun 0 = iota */
             Obj::from_usize(0)
         ],
@@ -35,12 +35,16 @@ fn iota() -> Mach {
 
 macro_rules! fmt_obj {
     ($m:ident) => {{
-        |o: &Obj| format!("{}", o.$m())
+        |o: &Obj, vm: &VM| format!("{}", o.$m())
+    }};
+
+    (vm $m:ident) => {{
+        |o: &Obj, vm: &VM| format!("{:?}", o.$m(vm))
     }};
 }
 
 fn main() {
-    let m: &[(fn(&Obj) -> String, Mach)] = &[
+    let m: &[(fn(&Obj, &VM) -> String, Mach)] = &[
         (fmt_obj!(as_i64), mach!([Obj::from_i64(32), Obj::from_i64(-2)],
             BlockType::Label, 0 => {
                 Instr::Static(RR, 0),
@@ -48,12 +52,12 @@ fn main() {
                 Instr::DivI(RR, RA),
             }
         )),
-        (fmt_obj!(as_u64), iota()),
+        (fmt_obj!(vm as_a), iota()),
     ];
 
     for (f, (i, instrs, bodies, blocks, flash)) in m.into_iter() {
         let mut vm = VM::new(&instrs, &bodies, &blocks, &flash);
         println!("{}", vm.fmt());
-        println!("{:?}", vm.exe_block(*i).map(|x| f(&x)));
+        println!("{:?}", vm.exe_block(*i).map(|x| f(&x, &vm)));
     }
 }

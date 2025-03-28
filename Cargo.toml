@@ -13,4 +13,11 @@ name = "wal"
 path = "src/main.rs"
 test = false
 
+[[bench]]
+name = "bc"
+harness = false
+
+[dev-dependencies]
+criterion = "0.5.1"
+
 [dependencies]

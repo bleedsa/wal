@@ -1,8 +1,11 @@
-use crate::{mkenums, mkindexed, dbgln, vm::{VM, A}};
+use crate::{
+    dbgln, mkenums, mkindexed,
+    vm::{A, VM},
+};
 use std::{
+    arch::asm,
     mem::transmute,
     ops::{Index, IndexMut},
-    arch::asm,
 };
 
 macro_rules! impl_math {
@@ -239,6 +242,8 @@ mkenums!((Instr, InstrType) => {
     Pop(Reg),
     /* load var y into reg x */
     Load(Reg, usize),
+    /* store reg y into var x */
+    Store(usize, Reg),
     /* load static object y into reg x */
     Static(Reg, usize),
     /* a label */
@@ -251,7 +256,7 @@ mkenums!((Instr, InstrType) => {
 
     /* math */
     IncI(Reg), DecI(Reg), IncF(Reg), DecF(Reg),
-    AddI(Reg, Reg), SubI(Reg, Reg), MulI(Reg, Reg), DivI(Reg, Reg), 
+    AddI(Reg, Reg), SubI(Reg, Reg), MulI(Reg, Reg), DivI(Reg, Reg),
     AddF(Reg, Reg), SubF(Reg, Reg), MulF(Reg, Reg), DivF(Reg, Reg),
 
     /* bools and jumps */

@@ -5,8 +5,8 @@ use crate::{
 };
 use std::{
     collections::HashMap,
-    ops::{Index, IndexMut},
     mem::transmute,
+    ops::{Index, IndexMut},
 };
 
 #[macro_export]
@@ -177,7 +177,12 @@ pub struct VM<'a> {
 }
 
 impl<'a> VM<'a> {
-    pub fn new(instrs: &'a [Instr], bodies: &'a [Body], blocks: &'a [Block], flash: &'a [Obj]) -> Self {
+    pub fn new(
+        instrs: &'a [Instr],
+        bodies: &'a [Body],
+        blocks: &'a [Block],
+        flash: &'a [Obj],
+    ) -> Self {
         Self {
             i: 0,
             len: instrs.len(),
@@ -217,10 +222,10 @@ BLOCKS
                 .iter()
                 .enumerate()
                 .map(|(i, x)| format!(
-                        "{i:4}: {x:?}\n{}",
-                        self.iter_body(i)
-                            .map(|x| format!("      > {x:?}\n"))
-                            .collect::<String>()
+                    "{i:4}: {x:?}\n{}",
+                    self.iter_body(i)
+                        .map(|x| format!("      > {x:?}\n"))
+                        .collect::<String>()
                 ))
                 .collect::<String>(),
             blk = self
@@ -233,9 +238,16 @@ BLOCKS
     }
 
     pub fn find_label(&self, n: &usize) -> Option<usize> {
-        self.instrs.iter()
+        self.instrs
+            .iter()
             .enumerate()
-            .find(|(_, x)| if let Instr::Label(s) = x { n == s } else { false })
+            .find(|(_, x)| {
+                if let Instr::Label(s) = x {
+                    n == s
+                } else {
+                    false
+                }
+            })
             .map(|(i, _)| i + 1)
     }
 
@@ -246,7 +258,10 @@ BLOCKS
 
     #[inline]
     pub fn vec_mut(&'a mut self, idx: &u64) -> &'a mut A {
-        self.vecs.1.get_mut(idx).expect(&format!("vec at {idx} not found"))
+        self.vecs
+            .1
+            .get_mut(idx)
+            .expect(&format!("vec at {idx} not found"))
     }
 
     pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &Instr) -> Res<bool> {
@@ -272,12 +287,9 @@ BLOCKS
     }
 
     #[inline]
-    pub fn exe_at(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, i: usize) -> Res<()> {
+    pub fn exe_at(&mut self, i: usize) {
         dbgln!("exe_at(): starting execution at {i}");
-
         self.i = i;
-
-        Ok(())
     }
 
     pub fn exe_body(&mut self, i: usize, cs: Option<Vec<Option<Obj>>>) -> Res<Obj> {
@@ -328,6 +340,7 @@ BLOCKS
     }
 }
 
+#[allow(unused)]
 macro_rules! un {
     ($p:pat = $x:expr => $e:expr => $r:expr) => {{
         if let $p = $x {
@@ -373,7 +386,7 @@ static INSTRS: &[(
     InstrType,
     for<'a, 'b> fn(&mut VM<'a>, &mut Regs, &mut Vars, &mut Stk, &'b Instr) -> Res<bool>,
 )] = &[
-    /* load things */
+    /* load and store things */
     mkinstr!(Lit(to, x)(_, reg, _, _, i) reg[*to] = *x),
     mkinstr!(Cpy(to, x)(_, reg, _, _, i) reg[*to] = reg[*x]),
     mkinstr!(Push(x)(_, reg, _, stk, i) stk.push(reg[*x])),
@@ -382,6 +395,7 @@ static INSTRS: &[(
     } else {
         return err_fmt!("var {x} not allocated")
     }),
+    mkinstr!(Store(to, x)(_, reg, var, _, i) var[*to] = Some(reg[*x])),
     mkinstr!(Static(to, x)(vm, reg, _, _, i) reg[*to] = vm.flash[*x]),
     /* integer math */
     mkinstr!(DivI(x, y)(_, reg, _, _, i) {
@@ -426,17 +440,17 @@ static INSTRS: &[(
         reg[RCF] = r;
     }),
     /* jumps */
-    mkinstr!(ret Goto(lbl)(vm, reg, var, stk, i) {
+    mkinstr!(ret Goto(lbl)(vm, _, _, _, i) {
         let idx = if let Some(x) = vm.find_label(lbl) {
             x
         } else {
             return err_fmt!("Goto(): label {lbl} not found");
         };
-        vm.exe_at(reg, var, stk, idx)?;
+        vm.exe_at(idx);
         dbgln!("vm.i: {}", vm.i);
         Ok(false)
     }),
-    mkinstr!(ret GotoZ(lbl)(vm, reg, var, stk, i) {
+    mkinstr!(ret GotoZ(lbl)(vm, reg, _, _, i) {
         dbgln!("RCF: {}", reg[RCF].as_i64());
         if reg[RCF].as_i64() == 0 {
             let idx = if let Some(x) = vm.find_label(lbl) {
@@ -445,7 +459,7 @@ static INSTRS: &[(
                 return err_fmt!("GotoZ(): label {lbl} not found");
             };
 
-            vm.exe_at(reg, var, stk, idx)?;
+            vm.exe_at(idx);
             Ok(false)
         } else {
             Ok(true)
@@ -541,6 +555,16 @@ mod test {
                     }
                 ),
                 Obj::from_i64(3),
+            ),
+            (
+                mach!(
+                    BlockType::Label, 1 => {
+                        Instr::Lit(RA, Obj(44)),
+                        Instr::Store(0, RA),
+                        Instr::Load(RR, 0),
+                    }
+                ),
+                Obj(44),
             ),
         ]
         .into_iter()

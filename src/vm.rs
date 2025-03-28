@@ -265,6 +265,7 @@ BLOCKS
 
         self.i = i;
         while self.i < self.len {
+            dbgln!("exe_at(): self.i: {}", self.i);
             let x = &self.instrs[self.i];
             if x == &Instr::Ret {
                 break;
@@ -296,6 +297,7 @@ BLOCKS
         for (n, x) in self.iter_body(i).enumerate() {
             self.i = n;
             self.exe_instr(&mut r, &mut v, &mut s, x)?;
+            dbgln!("self.i: {n}");
         }
 
         Ok(r[RR])
@@ -425,8 +427,9 @@ static INSTRS: &[(
                 return err_fmt!("GotoZ(): label {lbl} not found");
             };
             let i = vm.i;
+
             vm.exe_at(reg, var, stk, idx)?;
-            vm.i = i;
+
             dbgln!("GotoZ({lbl}): resuming execution at {}({i})", vm.i);
         }
     }),

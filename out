@@ -1,0 +1,149 @@
+   Compiling wal v0.1.0 (/home/skye/src/wal)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.23s
+     Running `target/debug/wal`
+executing body 0 with callstack None
+ > exec  Static(RR, 0)
+   where RA = Obj(0), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([])
+self.i: 0
+ > exec  Static(RA, 1)
+   where RA = Obj(0), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(32), RCF = Obj(0)
+   & Vars([])
+self.i: 1
+ > exec  DivI(RR, RA)
+   where RA = Obj(18446744073709551614), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(32), RCF = Obj(0)
+   & Vars([])
+x/y: -16
+self.i: 2
+executing body 1 with callstack None
+ > exec  Static(RA, 0)
+   where RA = Obj(0), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([])
+self.i: 0
+ > exec  Push(RA)
+   where RA = Obj(3), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([])
+self.i: 1
+ > exec  Static(RA, 1)
+   where RA = Obj(3), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([])
+self.i: 2
+ > exec  Call(RR, RA)
+   where RA = Obj(0), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([])
+executing function 0 with callstack [Some(Obj(3))]
+executing body 0 with callstack Some([Some(Obj(3))])
+ > exec  Lit(RC, Obj(0))
+   where RA = Obj(0), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+self.i: 0
+ > exec  Load(RB, 0)
+   where RA = Obj(0), RB = Obj(0), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+self.i: 1
+ > exec  NewA(RR)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+self.i: 2
+ > exec  Label(0)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+self.i: 3
+ > exec  CmpI(RC, RB)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+self.i: 4
+ > exec  GotoZ(1)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551613)
+   & Vars([Some(Obj(3))])
+RCF: -3
+self.i: 5
+ > exec  PushA(RR, RC)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551613)
+   & Vars([Some(Obj(3))])
+self.i: 6
+ > exec  IncI(RC)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(0), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551613)
+   & Vars([Some(Obj(3))])
+x+y: 1
+self.i: 7
+ > exec  Goto(0)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(1), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551613)
+   & Vars([Some(Obj(3))])
+exe_at(): executing instruction 4
+exe_at(): self.i: 4
+ > exec  CmpI(RC, RB)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(1), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551613)
+   & Vars([Some(Obj(3))])
+exe_at(): self.i: 5
+ > exec  GotoZ(1)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(1), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551614)
+   & Vars([Some(Obj(3))])
+RCF: -2
+exe_at(): self.i: 6
+ > exec  PushA(RR, RC)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(1), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551614)
+   & Vars([Some(Obj(3))])
+exe_at(): self.i: 7
+ > exec  IncI(RC)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(1), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551614)
+   & Vars([Some(Obj(3))])
+x+y: 2
+exe_at(): self.i: 8
+ > exec  Goto(0)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(2), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551614)
+   & Vars([Some(Obj(3))])
+exe_at(): executing instruction 4
+exe_at(): self.i: 4
+ > exec  CmpI(RC, RB)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(2), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551614)
+   & Vars([Some(Obj(3))])
+exe_at(): self.i: 5
+ > exec  GotoZ(1)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(2), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551615)
+   & Vars([Some(Obj(3))])
+RCF: -1
+exe_at(): self.i: 6
+ > exec  PushA(RR, RC)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(2), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551615)
+   & Vars([Some(Obj(3))])
+exe_at(): self.i: 7
+ > exec  IncI(RC)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(2), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551615)
+   & Vars([Some(Obj(3))])
+x+y: 3
+exe_at(): self.i: 8
+ > exec  Goto(0)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(3), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551615)
+   & Vars([Some(Obj(3))])
+exe_at(): executing instruction 4
+exe_at(): self.i: 4
+ > exec  CmpI(RC, RB)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(3), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(18446744073709551615)
+   & Vars([Some(Obj(3))])
+exe_at(): self.i: 5
+ > exec  GotoZ(1)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(3), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+RCF: 0
+exe_at(): executing instruction 10
+exe_at(): self.i: 10
+GotoZ(1): resuming execution at 9(5)
+exe_at(): self.i: 10
+exe_at(): self.i: 9
+ > exec  Label(1)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(3), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+exe_at(): self.i: 10
+exe_at(): self.i: 9
+ > exec  Label(1)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(3), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+exe_at(): self.i: 10
+self.i: 8
+ > exec  Label(1)
+   where RA = Obj(0), RB = Obj(3), RC = Obj(3), RD = Obj(0), RE = Obj(0), RF = Obj(0), RG = Obj(0), RR = Obj(0), RCF = Obj(0)
+   & Vars([Some(Obj(3))])
+self.i: 9
+got Obj(0) from body
+self.i: 3

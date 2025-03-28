@@ -17,10 +17,10 @@ fn iota() -> Mach {
             Instr::Label("loop"),
             Instr::CmpI(RC, RB),
             Instr::GotoZ("end"),
+            Instr::PushA(RR, RC),
             Instr::IncI(RC),
             Instr::Goto("loop"),
             Instr::Label("end"),
-            Instr::Cpy(RR, RC),
             Instr::Ret,
         },
         BlockType::Label, 0 => {
@@ -33,20 +33,27 @@ fn iota() -> Mach {
     )
 }
 
+macro_rules! fmt_obj {
+    ($m:ident) => {{
+        |o: &Obj| format!("{}", o.$m())
+    }};
+}
+
 fn main() {
-    for (i, instrs, bodies, blocks, flash) in [
-        mach!([Obj::from_i64(32), Obj::from_i64(-2)],
+    let m: &[(fn(&Obj) -> String, Mach)] = &[
+        (fmt_obj!(as_i64), mach!([Obj::from_i64(32), Obj::from_i64(-2)],
             BlockType::Label, 0 => {
                 Instr::Static(RR, 0),
                 Instr::Static(RA, 1),
                 Instr::DivI(RR, RA),
             }
-        ),
-        iota(),
-    ].into_iter()
-    {
+        )),
+        (fmt_obj!(as_u64), iota()),
+    ];
+
+    for (f, (i, instrs, bodies, blocks, flash)) in m.into_iter() {
         let mut vm = VM::new(&instrs, &bodies, &blocks, &flash);
         println!("{}", vm.fmt());
-        println!("{:?}", vm.exe_block(i));
+        println!("{:?}", vm.exe_block(*i).map(|x| f(&x)));
     }
 }

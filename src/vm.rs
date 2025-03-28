@@ -43,6 +43,11 @@ impl A {
     pub fn new() -> Self {
         Self(Vec::new())
     }
+
+    #[inline]
+    pub fn push(&mut self, x: Obj) {
+        self.0.push(x);
+    }
 }
 
 /** a map from `u64` to `T` */
@@ -197,7 +202,9 @@ impl<'a> VM<'a> {
 {ins}
 BODIES
 ======
-{bod}"#,
+{bod}
+BLOCKS
+{blk}"#,
             ins = self
                 .instrs
                 .iter()
@@ -215,6 +222,12 @@ BODIES
                             .collect::<String>()
                 ))
                 .collect::<String>(),
+            blk = self
+                .blocks
+                .iter()
+                .enumerate()
+                .map(|(i, x)| format!("{i:4}: {x:?}\n"))
+                .collect::<String>(),
         )
     }
 
@@ -222,7 +235,7 @@ BODIES
         self.instrs.iter()
             .enumerate()
             .find(|(_, x)| if let Instr::Label(s) = x { &n == s } else { false })
-            .map(|(i, _)| i)
+            .map(|(i, _)| i + 1)
     }
 
     pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &Instr) -> Res<()> {
@@ -240,9 +253,17 @@ BODIES
         }
     }
 
+    #[inline]
+    pub fn inc(&mut self) {
+        if self.i < self.len {
+            self.i += 1;
+        }
+    }
+
     pub fn exe_at(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, i: usize) -> Res<()> {
         dbgln!("exe_at(): executing instruction {i}");
 
+        let n = self.i;
         self.i = i;
         while self.i < self.len {
             let x = &self.instrs[self.i];
@@ -256,6 +277,7 @@ BODIES
 
         /* TODO: this magically makes it work? does it really? */
         self.i -= 1;
+        // dbgln!("instrs[{}]: {:?}", self.i, self.instrs[self.i]);
 
         Ok(())
     }
@@ -272,7 +294,11 @@ BODIES
         };
         let mut s = Stk::new();
 
-        self.exe_at(&mut r, &mut v, &mut s, b.start)?;
+        for (n, x) in self.iter_body(i).enumerate() {
+            self.i = n;
+            self.exe_instr(&mut r, &mut v, &mut s, x)?;
+        }
+
         Ok(r[RR])
     }
 
@@ -373,6 +399,7 @@ static INSTRS: &[(
         let i = vm.vecs.push(A::new());
         reg[*to] = Obj::from_u64(i);
     }),
+    mkinstr!(PushA(a, x)(vm, reg, _, _, i) vm.vecs[&reg[*a].as_u64()].push(reg[*x])),
     /* bools */
     mkinstr!(CmpI(x, y)(_, reg, _, _, i) {
         let y = reg[*y];
@@ -386,7 +413,9 @@ static INSTRS: &[(
         } else {
             return err_fmt!("Goto(): label {lbl} not found");
         };
+        let i = vm.i;
         vm.exe_at(reg, var, stk, idx)?;
+        vm.i = i;
     }),
     mkinstr!(GotoZ(lbl)(vm, reg, var, stk, i) {
         dbgln!("RCF: {}", reg[RCF].as_i64());
@@ -396,7 +425,10 @@ static INSTRS: &[(
             } else {
                 return err_fmt!("GotoZ(): label {lbl} not found");
             };
+            let i = vm.i;
             vm.exe_at(reg, var, stk, idx)?;
+            vm.i = i;
+            dbgln!("GotoZ({lbl}): resuming execution at {}({i})", vm.i);
         }
     }),
 ];
@@ -462,7 +494,11 @@ mod test {
             mathtest!(AddI(Obj::from_i64(-5), Obj::from_i64(7)) == Obj::from_i64(2)),
             mathtest!(SubI(Obj::from_i64(10), Obj::from_i64(3)) == Obj::from_i64(7)),
             mathtest!(MulI(Obj::from_i64(-8), Obj::from_i64(2)) == Obj::from_i64(-16)),
-            mathtest!(DivI(Obj::from_i64(16), Obj::from_i64(3)) == Obj::from_i64(8)),
+            mathtest!(DivI(Obj::from_i64(16), Obj::from_i64(2)) == Obj::from_i64(8)),
+            mathtest!(AddF(Obj::from_f64(-6.), Obj::from_f64(2.)) == Obj::from_f64(-4.)),
+            mathtest!(SubF(Obj::from_f64(-1.), Obj::from_f64(3.)) == Obj::from_f64(-4.)),
+            mathtest!(MulF(Obj::from_f64(1.5), Obj::from_f64(10.)) == Obj::from_f64(15.)),
+            mathtest!(DivF(Obj::from_f64(32.), Obj::from_f64(-2.)) == Obj::from_f64(-16.)),
             (
                 mach!(
                     /* sub */

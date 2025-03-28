@@ -6,7 +6,7 @@ fn iota() -> Mach {
     mach!(
         [
             /* !n */
-            Obj::from_i64(10),
+            Obj::from_i64(10000),
             /* fun 0 = iota */
             Obj::from_usize(0)
         ],
@@ -58,6 +58,6 @@ fn main() {
     for (f, (i, instrs, bodies, blocks, flash)) in m.into_iter() {
         let mut vm = VM::new(&instrs, &bodies, &blocks, &flash);
         println!("{}", vm.fmt());
-        println!("{:?}", vm.exe_block(*i).map(|x| f(&x, &vm)));
+        println!("{}", vm.exe_block(*i).map(|x| f(&x, &vm)).unwrap_or_else(|e| format!("err: {e}")));
     }
 }

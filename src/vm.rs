@@ -219,7 +219,7 @@ BLOCKS
                 .map(|(i, x)| format!(
                         "{i:4}: {x:?}\n{}",
                         self.iter_body(i)
-                            .map(|x| format!(" > {x:?}\n"))
+                            .map(|x| format!("      > {x:?}\n"))
                             .collect::<String>()
                 ))
                 .collect::<String>(),
@@ -244,12 +244,17 @@ BLOCKS
         &self.vecs[idx]
     }
 
-    pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &Instr) -> Res<()> {
+    #[inline]
+    pub fn vec_mut(&'a mut self, idx: &u64) -> &'a mut A {
+        self.vecs.1.get_mut(idx).expect(&format!("vec at {idx} not found"))
+    }
+
+    pub fn exe_instr(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, x: &Instr) -> Res<bool> {
         dbgln!(" > exec  {x:?}\n   where {}\n   & {:?}", r.fmt(), v);
 
         let t = x.ty();
         if t == InstrType::Label {
-            return Ok(());
+            return Ok(true);
         }
 
         if let Some((_, f)) = INSTRS.iter().find(|(i, _)| i == &t) {
@@ -266,23 +271,11 @@ BLOCKS
         }
     }
 
+    #[inline]
     pub fn exe_at(&mut self, r: &mut Regs, v: &mut Vars, s: &mut Stk, i: usize) -> Res<()> {
-        dbgln!("exe_at(): executing instruction {i}");
+        dbgln!("exe_at(): starting execution at {i}");
 
         self.i = i;
-        while self.i < self.len {
-            let x = &self.instrs[self.i];
-            if x == &Instr::Ret {
-                break;
-            }
-
-            self.exe_instr(r, v, s, x)?;
-            self.i += 1;
-        }
-
-        /* TODO: this magically makes it work? does it really? */
-        self.i -= 1;
-        // dbgln!("instrs[{}]: {:?}", self.i, self.instrs[self.i]);
 
         Ok(())
     }
@@ -299,9 +292,17 @@ BLOCKS
         };
         let mut s = Stk::new();
 
-        for (n, x) in self.iter_body(i).enumerate() {
-            self.i = n;
-            self.exe_instr(&mut r, &mut v, &mut s, x)?;
+        self.i = b.start;
+        while self.i < self.len {
+            let x = &self.instrs[self.i];
+            if x == &Instr::Ret {
+                break;
+            }
+
+            let inc = self.exe_instr(&mut r, &mut v, &mut s, x)?;
+            if inc {
+                self.i += 1;
+            }
         }
 
         Ok(r[RR])
@@ -328,10 +329,10 @@ BLOCKS
 }
 
 macro_rules! un {
-    ($p:pat = $x:expr => $e:expr) => {{
+    ($p:pat = $x:expr => $e:expr => $r:expr) => {{
         if let $p = $x {
             $e
-            Ok(())
+            Ok($r)
         } else {
             unreachable!()
         }
@@ -351,15 +352,26 @@ macro_rules! mkinstr {
     }};
 
     ($t:ident($($p:pat),*)($vm:pat, $reg:pat, $var:pat, $stk:pat, $in:ident) $x:expr) => {{
+        mkinstr!(ret $t($($p),*)($vm, $reg, $var, $stk, $in) {
+            $x;
+            Ok(true)
+        })
+    }};
+
+    (ret $t:ident($($p:pat),*)($vm:pat, $reg:pat, $var:pat, $stk:pat, $in:ident) $x:expr) => {{
         (InstrType::$t, |$vm, $reg, $var, $stk, $in| {
-            un!(Instr::$t($($p),*) = $in => { $x })
+            if let Instr::$t($($p),*) = $in {
+                $x
+            } else {
+                unreachable!()
+            }
         })
     }};
 }
 
 static INSTRS: &[(
     InstrType,
-    for<'a, 'b> fn(&mut VM<'a>, &mut Regs, &mut Vars, &mut Stk, &'b Instr) -> Res<()>,
+    for<'a, 'b> fn(&mut VM<'a>, &mut Regs, &mut Vars, &mut Stk, &'b Instr) -> Res<bool>,
 )] = &[
     /* load things */
     mkinstr!(Lit(to, x)(_, reg, _, _, i) reg[*to] = *x),
@@ -380,14 +392,14 @@ static INSTRS: &[(
     mkinstr!(math SubI, subi, i64),
     mkinstr!(math MulI, muli, i64),
     // mkinstr!(math DivI, divi, i64),
-    mkinstr!(IncI(x)(_, reg, _, _, i) reg[*x].add_i(1)),
+    mkinstr!(IncI(x)(_, reg, _, _, i) reg[*x].addi(Obj(1))),
     /* float math */
     mkinstr!(math AddF, addf, f64),
     mkinstr!(math SubF, subf, f64),
     mkinstr!(math MulF, mulf, f64),
     mkinstr!(math DivF, divf, f64),
     /* functions */
-    mkinstr!(Call(ret, x)(vm, reg, _, stk, i) {
+    mkinstr!(ret Call(ret, x)(vm, reg, _, stk, i) {
         /* function and function body */
         let f = reg[*x].as_usize();
         let fbod = vm.bodies[f];
@@ -398,6 +410,7 @@ static INSTRS: &[(
         let r = vm.exe_fun(f, cstk)?;
         dbgln!("got {r:?} from body");
         reg[*ret] = r;
+        Ok(false)
     }),
     /* vector ops */
     mkinstr!(NewA(to)(vm, reg, _, _, i) {
@@ -408,22 +421,23 @@ static INSTRS: &[(
     /* bools */
     mkinstr!(CmpI(x, y)(_, reg, _, _, i) {
         let y = reg[*y];
-        let r = reg[*x].cmp_i(y);
+        let r = reg[*x].cmpi(y);
+        dbgln!("setting RCF: {}", r.as_i64());
         reg[RCF] = r;
     }),
     /* jumps */
-    mkinstr!(Goto(lbl)(vm, reg, var, stk, i) {
+    mkinstr!(ret Goto(lbl)(vm, reg, var, stk, i) {
         let idx = if let Some(x) = vm.find_label(lbl) {
             x
         } else {
             return err_fmt!("Goto(): label {lbl} not found");
         };
-        let i = vm.i;
         vm.exe_at(reg, var, stk, idx)?;
-        vm.i = i;
+        dbgln!("vm.i: {}", vm.i);
+        Ok(false)
     }),
-    mkinstr!(GotoZ(lbl)(vm, reg, var, stk, i) {
-        // dbgln!("RCF: {}", reg[RCF].as_i64());
+    mkinstr!(ret GotoZ(lbl)(vm, reg, var, stk, i) {
+        dbgln!("RCF: {}", reg[RCF].as_i64());
         if reg[RCF].as_i64() == 0 {
             let idx = if let Some(x) = vm.find_label(lbl) {
                 x
@@ -432,6 +446,9 @@ static INSTRS: &[(
             };
 
             vm.exe_at(reg, var, stk, idx)?;
+            Ok(false)
+        } else {
+            Ok(true)
         }
     }),
 ];

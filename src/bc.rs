@@ -31,7 +31,7 @@ macro_rules! impl_asm_math {
             };
 
             /* TODO: why is this dbgln load bearing? */
-            dbgln!("{}()\tx: {}, y: {}", stringify!($n), $x, $y);
+//            dbgln!("{}()\tx: {}, y: {}", stringify!($n), $x, $y);
 
             unsafe {
                 asm!($($t)*);
@@ -163,6 +163,23 @@ impl Obj {
     impl_math!(sub_f(x: f64, y: f64) => x-y);
     impl_math!(mul_f(x: f64, y: f64) => x*y);
     impl_math!(div_f(x: f64, y: f64) => x/y);
+
+    pub fn cmpi(&self, y: Obj) -> Obj {
+        let r: i64;
+        let (x, y): (i64, i64) = unsafe { (transmute(self.0), transmute(y.0)) };
+
+        unsafe {
+            asm!(
+                "mov {r}, {x}",
+                "sub {r}, {y}",
+                r = out(reg) r,
+                x = in(reg) x,
+                y = in(reg) y,
+            );
+        }
+
+        Obj::from_i64(r)
+    }
 
     #[inline]
     pub fn cmp_i(&self, x: Obj) -> Obj {
